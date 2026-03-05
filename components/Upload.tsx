@@ -1,7 +1,7 @@
-import React, {useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {useOutletContext} from "react-router";
 import {CheckCircle2, ImageIcon, UploadIcon} from "lucide-react";
-import {PROGRESS_INTERVAL_MS, PROGRESS_STEP, REDIRECT_DELAY_MS} from "../lib/constants";
+import {PROGRESS_INTERVAL_MS, PROGRESS_STEP, REDIRECT_DELAY_MS, MAX_UPLOAD_SIZE} from "../lib/constants";
 
 interface UploadProps {
     onComplete: (base64: string) => void;
@@ -11,23 +11,56 @@ const Upload = ({ onComplete }: UploadProps) => {
     const [file, setFile] = useState<File | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [error, setError] = useState<string | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isMounted = useRef(true);
 
     const {isSignedIn} = useOutletContext<AuthContext>();
 
+    useEffect(() => {
+        return () => {
+            isMounted.current = false;
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, []);
+
     const processFile = (file: File) => {
         if (!isSignedIn) return;
+        
+        setError(null);
+        if (!file.type.startsWith('image/')) {
+            setError("Invalid file type. Please upload an image.");
+            return;
+        }
+        if (file.size > MAX_UPLOAD_SIZE) {
+            setError(`File is too large. Maximum size is ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB.`);
+            return;
+        }
+
         setFile(file);
         setProgress(0);
 
         const reader = new FileReader();
         reader.onload = (e) => {
             const base64 = e.target?.result as string;
-            const interval = setInterval(() => {
+            
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            intervalRef.current = setInterval(() => {
+                if (!isMounted.current) {
+                    if (intervalRef.current) clearInterval(intervalRef.current);
+                    return;
+                }
+
                 setProgress((prev) => {
                     if (prev >= 100) {
-                        clearInterval(interval);
-                        setTimeout(() => {
-                            onComplete(base64);
+                        if (intervalRef.current) clearInterval(intervalRef.current);
+                        
+                        timeoutRef.current = setTimeout(() => {
+                            if (isMounted.current) {
+                                onComplete(base64);
+                            }
                         }, REDIRECT_DELAY_MS);
                         return 100;
                     }
@@ -55,7 +88,7 @@ const Upload = ({ onComplete }: UploadProps) => {
         if (!isSignedIn) return;
 
         const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile && droppedFile.type.startsWith('image/')) {
+        if (droppedFile) {
             processFile(droppedFile);
         }
     };
@@ -88,10 +121,11 @@ const Upload = ({ onComplete }: UploadProps) => {
                         <div className="drop-icon">
                             <UploadIcon size={20}/>
                         </div>
+                        {error && <p className="error-message text-red-500 text-xs font-bold mb-2 uppercase tracking-tight">{error}</p>}
                         <p>{isSignedIn ? (
                             "Click to upload or drag and drop"
                         ):("Sign in or sign up with Puter to upload")}</p>
-                        <p className="help">Maximum file size 50 MB.</p>
+                        <p className="help">Maximum file size {MAX_UPLOAD_SIZE / (1024 * 1024)} MB.</p>
                     </div>
                 </div>
             ):

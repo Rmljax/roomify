@@ -17,6 +17,7 @@ export const PROGRESS_STEP = 5;
 // UI Constants
 export const GRID_OVERLAY_SIZE = "60px 60px";
 export const GRID_COLOR = "#3B82F6";
+export const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
 
 // HTTP Status Codes
 export const UNAUTHORIZED_STATUSES = [401, 403];
